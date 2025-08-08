@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { uploadToCloudinary, validateMediaFile } from '@/lib/cloudinary/upload';
 
 interface MediaFile {
@@ -17,12 +17,16 @@ interface MediaUploadWidgetProps {
   onMediaUploaded: (urls: string[], types: string[]) => void;
   maxFiles?: number;
   accept?: string;
+  autoUpload?: boolean;
+  onUploadStateChange?: (isUploading: boolean) => void;
 }
 
 export function MediaUploadWidget({ 
   onMediaUploaded, 
   maxFiles = 4,
-  accept = "image/*,video/*" 
+  accept = "image/*,video/*",
+  autoUpload = true,
+  onUploadStateChange,
 }: MediaUploadWidgetProps) {
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
   const [dragActive, setDragActive] = useState(false);
@@ -56,10 +60,10 @@ export function MediaUploadWidget({
     setMediaFiles(prev => [...prev, ...newFiles]);
   }, [mediaFiles.length, maxFiles]);
 
-  // Upload files to Cloudinary
-  const uploadFiles = async () => {
-    const filesToUpload = mediaFiles.filter(f => !f.uploaded && !f.uploading);
-    
+  // Upload helper for a specific set of files
+  const uploadSpecificFiles = async (filesToUpload: MediaFile[]) => {
+    if (filesToUpload.length === 0) return;
+
     // Mark files as uploading
     setMediaFiles(prev => prev.map(f => 
       filesToUpload.find(upload => upload.id === f.id) 
@@ -71,7 +75,6 @@ export function MediaUploadWidget({
       try {
         const result = await uploadToCloudinary(mediaFile.file, {
           onProgress: (progress) => {
-            // You could update individual file progress here if needed
             console.log(`Upload progress for ${mediaFile.file.name}: ${progress}%`);
           }
         });
@@ -96,13 +99,34 @@ export function MediaUploadWidget({
 
     const results = await Promise.all(uploadPromises);
     const successful = results.filter(r => r !== null) as { url: string; type: string }[];
-    
+
     if (successful.length > 0) {
       const urls = successful.map(r => r.url);
       const types = successful.map(r => r.type);
       onMediaUploaded(urls, types);
     }
   };
+
+  // Upload all pending files (manual trigger)
+  const uploadFiles = async () => {
+    const filesToUpload = mediaFiles.filter(f => !f.uploaded && !f.uploading);
+    await uploadSpecificFiles(filesToUpload);
+  };
+
+  // Expose upload in-progress state to parent
+  useEffect(() => {
+    const anyUploading = mediaFiles.some(f => f.uploading);
+    onUploadStateChange?.(anyUploading);
+  }, [mediaFiles, onUploadStateChange]);
+
+  // Auto-upload newly added files
+  useEffect(() => {
+    if (!autoUpload) return;
+    const toUpload = mediaFiles.filter(f => !f.uploaded && !f.uploading);
+    if (toUpload.length > 0) {
+      uploadSpecificFiles(toUpload);
+    }
+  }, [mediaFiles, autoUpload]);
 
   // Remove file
   const removeFile = (id: string) => {
@@ -252,8 +276,8 @@ export function MediaUploadWidget({
         </div>
       )}
 
-      {/* Upload button */}
-      {mediaFiles.some(f => !f.uploaded && !f.uploading) && (
+      {/* Upload button (shown when autoUpload is disabled) */}
+      {!autoUpload && mediaFiles.some(f => !f.uploaded && !f.uploading) && (
         <button
           onClick={uploadFiles}
           className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"

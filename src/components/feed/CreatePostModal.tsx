@@ -35,9 +35,20 @@ export function CreatePostModal({ currentUser, onClose, onPostCreated }: CreateP
   // Media fields
   const [mediaUrls, setMediaUrls] = useState<string[]>([]);
   const [mediaTypes, setMediaTypes] = useState<string[]>([]);
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   
   // Location field (keeping this as it's useful for all posts)
   const [location, setLocation] = useState('');
+
+  // Reset form when modal is closed
+  const handleClose = () => {
+    setContent('');
+    setTitle('');
+    setLocation('');
+    setMediaUrls([]);
+    setMediaTypes([]);
+    onClose();
+  };
 
   if (!currentUser) return null;
 
@@ -63,8 +74,8 @@ export function CreatePostModal({ currentUser, onClose, onPostCreated }: CreateP
         post_type: 'general', // All posts are general now
         visibility: 'public', // All posts are public now
         tags: extractHashtags(content),
-        media_urls: mediaUrls.length > 0 ? mediaUrls : undefined,
-        media_types: mediaTypes.length > 0 ? mediaTypes : undefined,
+         media_urls: mediaUrls.length > 0 ? mediaUrls : undefined,
+         media_types: mediaTypes.length > 0 ? mediaTypes : undefined,
         ...(location && { location: location.trim() })
       };
 
@@ -80,6 +91,10 @@ export function CreatePostModal({ currentUser, onClose, onPostCreated }: CreateP
       }
 
       if (data) {
+        console.log('Created post data:', data);
+        console.log('Media URLs from response:', data.media_urls);
+        console.log('Media URLs from state:', mediaUrls);
+        
         // Create a FeedPost object for the feed
         const feedPost: FeedPost = {
           id: data.id,
@@ -94,11 +109,19 @@ export function CreatePostModal({ currentUser, onClose, onPostCreated }: CreateP
           created_at: data.created_at,
           is_liked: false,
           author: currentUser,
-          media_urls: data.media_urls || undefined,
-          tags: data.tags || undefined
+           media_urls: data.media_urls || mediaUrls || undefined, // Fallback to state media URLs
+           media_types: data.media_types || mediaTypes || undefined, // Fallback to state media types
+          tags: data.tags || undefined,
+          location: data.location || undefined
         };
 
         onPostCreated(feedPost);
+        // Reset form
+        setContent('');
+        setTitle('');
+        setLocation('');
+        setMediaUrls([]);
+        setMediaTypes([]);
         onClose();
       }
     } catch (error) {
@@ -119,7 +142,7 @@ export function CreatePostModal({ currentUser, onClose, onPostCreated }: CreateP
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900">Create Post</h2>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="text-gray-400 hover:text-gray-600 transition-colors"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -185,6 +208,27 @@ export function CreatePostModal({ currentUser, onClose, onPostCreated }: CreateP
               <span>Use #hashtags to categorize your post</span>
               <span>{content.length}/2000</span>
             </div>
+
+            {/* Location (moved here, under content) */}
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Location (optional)
+              </label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 111.414-1.414l4.243 4.243a2 2 0 002.828 0l4.243-4.243a8 8 0 10-1.414 1.414z" />
+                  </svg>
+                </span>
+                <input
+                  type="text"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="Where is this happening?"
+                  className="w-full border border-gray-300 rounded-lg pl-9 pr-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+            </div>
           </div>
 
           {/* Media Upload */}
@@ -194,26 +238,20 @@ export function CreatePostModal({ currentUser, onClose, onPostCreated }: CreateP
             </label>
             <MediaUploadWidget 
               onMediaUploaded={(urls, types) => {
-                setMediaUrls(urls);
-                setMediaTypes(types);
+                // Append newly uploaded media instead of replacing
+                setMediaUrls(prev => [...prev, ...urls]);
+                setMediaTypes(prev => [...prev, ...types]);
               }}
+              onUploadStateChange={(uploading) => setIsUploadingMedia(uploading)}
+              autoUpload
               maxFiles={4}
             />
+            {isUploadingMedia && (
+              <div className="mt-2 text-xs text-gray-500">Uploading media… Please wait before posting.</div>
+            )}
           </div>
 
-          {/* Location */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Location (optional)
-            </label>
-            <input
-              type="text"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="Where is this happening?"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-            />
-          </div>
+
 
           {/* Removed event and collaboration specific fields - keeping it simple */}
 
@@ -230,7 +268,7 @@ export function CreatePostModal({ currentUser, onClose, onPostCreated }: CreateP
             <button
               type="submit"
               className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:bg-gray-400"
-              disabled={isSubmitting || !content.trim()}
+              disabled={isSubmitting || !content.trim() || isUploadingMedia}
             >
               {isSubmitting ? 'Posting...' : 'Post'}
             </button>

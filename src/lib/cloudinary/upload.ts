@@ -354,76 +354,120 @@ export async function uploadToCloudinary(
   const formData = new FormData();
   formData.append('file', file);
   
-  // Use appropriate preset based on file type
-  const preset = isVideo ? 'video_posts' : 'social_media_posts';
-  formData.append('upload_preset', preset);
-  formData.append('folder', folder);
-  formData.append('tags', tags.join(','));
-  
-  if (public_id) {
-    formData.append('public_id', public_id);
-  }
+  // Try upload with fallback presets
+  const presets = isVideo 
+    ? ['video_posts', 'profile_pictures'] 
+    : ['social_media_posts', 'profile_pictures'];
 
-  try {
-    // Create XMLHttpRequest for progress tracking
-    return new Promise<CloudinaryUploadResponse>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
+  return await tryUploadWithPresets(presets, uploadUrl, formData, folder, tags, public_id, onProgress, isVideo);
 
-      // Track upload progress
-      if (onProgress) {
-        xhr.upload.addEventListener('progress', (event) => {
-          if (event.lengthComputable) {
-            const progress = Math.round((event.loaded / event.total) * 100);
-            onProgress(progress);
-          }
-        });
+  async function tryUploadWithPresets(
+    presetList: string[],
+    uploadUrl: string,
+    baseFormData: FormData,
+    folder: string,
+    tags: string[],
+    public_id?: string,
+    onProgress?: (progress: number) => void,
+    isVideo: boolean = false
+  ): Promise<CloudinaryUploadResponse> {
+    for (let i = 0; i < presetList.length; i++) {
+      const preset = presetList[i];
+      const formData = new FormData();
+      
+      // Copy all base form data
+      formData.append('file', baseFormData.get('file') as File);
+      formData.append('upload_preset', preset);
+      formData.append('folder', folder);
+      formData.append('tags', tags.join(','));
+      
+      if (public_id) {
+        formData.append('public_id', public_id);
       }
 
-      // Handle response
-      xhr.addEventListener('load', () => {
-        if (xhr.status === 200) {
-          try {
-            const response: CloudinaryUploadResponse = JSON.parse(xhr.responseText);
-            resolve(response);
-          } catch (error) {
-            reject(new UploadError('Invalid response from server', 'PARSE_ERROR', error));
+      try {
+        // Create XMLHttpRequest for progress tracking
+        const result = await new Promise<CloudinaryUploadResponse>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+
+          // Track upload progress
+          if (onProgress && i === 0) { // Only show progress on first attempt
+            xhr.upload.addEventListener('progress', (event) => {
+              if (event.lengthComputable) {
+                const progress = Math.round((event.loaded / event.total) * 100);
+                onProgress(progress);
+              }
+            });
           }
-        } else {
-          try {
-            const errorResponse = JSON.parse(xhr.responseText);
-            reject(new UploadError(
-              errorResponse.error?.message || 'Upload failed',
-              'UPLOAD_ERROR',
-              errorResponse
-            ));
-          } catch {
-            reject(new UploadError('Upload failed', 'NETWORK_ERROR'));
+
+          // Handle response
+          xhr.addEventListener('load', () => {
+            if (xhr.status === 200) {
+              try {
+                const response: CloudinaryUploadResponse = JSON.parse(xhr.responseText);
+                resolve(response);
+              } catch (error) {
+                reject(new UploadError('Invalid response from server', 'PARSE_ERROR', error));
+              }
+            } else {
+              try {
+                const errorResponse = JSON.parse(xhr.responseText);
+                const errorMessage = errorResponse.error?.message || 'Upload failed';
+                
+                // If preset not found and we have more presets to try, continue to next
+                if (errorMessage.includes('Upload preset not found') && i < presetList.length - 1) {
+                  reject(new UploadError('Upload preset not found', 'PRESET_NOT_FOUND', errorResponse));
+                } else {
+                  reject(new UploadError(errorMessage, 'UPLOAD_ERROR', errorResponse));
+                }
+              } catch {
+                reject(new UploadError('Upload failed', 'NETWORK_ERROR'));
+              }
+            }
+          });
+
+          // Handle network errors
+          xhr.addEventListener('error', () => {
+            reject(new UploadError('Network error during upload', 'NETWORK_ERROR'));
+          });
+
+          // Handle timeouts
+          xhr.addEventListener('timeout', () => {
+            reject(new UploadError('Upload timeout', 'TIMEOUT_ERROR'));
+          });
+
+          // Configure request
+          xhr.timeout = isVideo ? 120000 : 60000;
+          xhr.open('POST', uploadUrl);
+          xhr.send(formData);
+        });
+
+        return result; // Success - return immediately
+        
+      } catch (error) {
+        // If this was a preset not found error and we have more presets to try
+        if (error instanceof UploadError && error.code === 'PRESET_NOT_FOUND' && i < presetList.length - 1) {
+          console.warn(`Upload preset "${preset}" not found, trying "${presetList[i + 1]}"...`);
+          continue; // Try next preset
+        }
+        
+        // If this is the last preset or a different error, throw it
+        if (i === presetList.length - 1) {
+          // Add helpful message for the last attempt
+          if (error instanceof UploadError && error.message.includes('Upload preset not found')) {
+            throw new UploadError(
+              `Upload failed: None of the required presets (${presetList.join(', ')}) were found in your Cloudinary account. Please create the upload presets as described in CLOUDINARY_SETUP.md`,
+              'ALL_PRESETS_NOT_FOUND',
+              error.details
+            );
           }
         }
-      });
+        
+        throw error;
+      }
+    }
 
-      // Handle network errors
-      xhr.addEventListener('error', () => {
-        reject(new UploadError('Network error during upload', 'NETWORK_ERROR'));
-      });
-
-      // Handle timeouts - longer timeout for videos
-      xhr.addEventListener('timeout', () => {
-        reject(new UploadError('Upload timeout', 'TIMEOUT_ERROR'));
-      });
-
-      // Configure request - longer timeout for videos
-      xhr.timeout = isVideo ? 120000 : 60000; // 2 minutes for video, 1 minute for images
-      xhr.open('POST', uploadUrl);
-      xhr.send(formData);
-    });
-
-  } catch (error) {
-    throw new UploadError(
-      error instanceof Error ? error.message : 'Upload failed',
-      'UNKNOWN_ERROR',
-      error
-    );
+    throw new UploadError('All upload attempts failed', 'ALL_ATTEMPTS_FAILED');
   }
 }
 

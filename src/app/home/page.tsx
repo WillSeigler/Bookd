@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
+import { QuickCreatePostButton } from '@/components/feed/QuickCreatePostButton';
 import { FeedDebug } from '@/components/feed/FeedDebug';
 import { FeedFallback } from '@/components/feed/FeedFallback';
 import { getServerUserWithProfile } from '@/lib/auth/utils';
@@ -63,14 +64,7 @@ export default async function HomePage() {
                 <span className="ml-3 text-sm font-medium text-gray-900">Discover Events</span>
               </Link>
 
-              <div className="flex items-center w-full p-3 border border-gray-200 rounded-lg hover:border-yellow-300 hover:bg-yellow-50 transition-colors cursor-pointer">
-                <div className="p-2 bg-yellow-100 rounded-lg">
-                  <svg className="w-4 h-4 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                </div>
-                <span className="ml-3 text-sm font-medium text-gray-900">Create Post</span>
-              </div>
+              <QuickCreatePostButton />
             </div>
           </div>
         </div>

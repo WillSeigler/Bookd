@@ -26,9 +26,21 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 2. Scroll down to "Upload presets"
 3. Click "Add upload preset"
 
-### Create these two presets:
+### Create these three presets:
 
-#### Preset 1: social_media_posts
+#### Preset 1: profile_pictures
+- **Upload preset name**: `profile_pictures`
+- **Signing Mode**: Unsigned
+- **Folder**: `bookd/profiles` (optional)
+- **Media transformations**:
+  - Width: 200
+  - Height: 200
+  - Crop: Fill
+  - Quality: Auto
+  - Format: Auto
+- **Save**
+
+#### Preset 2: social_media_posts
 - **Upload preset name**: `social_media_posts`
 - **Signing Mode**: Unsigned
 - **Folder**: `bookd/posts` (optional)
@@ -40,7 +52,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
   - Format: Auto
 - **Save**
 
-#### Preset 2: video_posts
+#### Preset 3: video_posts
 - **Upload preset name**: `video_posts`
 - **Signing Mode**: Unsigned
 - **Folder**: `bookd/posts` (optional)

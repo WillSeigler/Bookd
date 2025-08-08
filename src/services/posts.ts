@@ -79,7 +79,8 @@ export class PostsService {
         author: post.users || post.organization_profiles,
         media_urls: post.media_urls,
         media_types: post.media_types,
-        tags: post.tags
+        tags: post.tags,
+        location: post.location
       })) as FeedPost[];
 
       return transformedData;
@@ -240,14 +241,37 @@ export class PostsService {
     compensation_offered?: string;
   }): Promise<Post | null> {
     try {
+      // Require authentication for RLS and set user_id
+      const { data: authData, error: authError } = await this.supabase.auth.getUser();
+      if (authError || !authData?.user) {
+        throw new Error('You must be signed in to create a post');
+      }
+
+      const authenticatedUserId = authData.user.id;
+
+      // Ensure media arrays satisfy DB constraint
+      const hasUrls = Array.isArray(postData.media_urls) && postData.media_urls.length > 0;
+      const hasTypes = Array.isArray(postData.media_types) && postData.media_types.length > 0;
+      const mediaLengthsMatch = hasUrls && hasTypes && postData.media_urls!.length === postData.media_types!.length;
+
+      const insertPayload: any = {
+        ...postData,
+        user_id: authenticatedUserId,
+        post_type: postData.post_type || 'general',
+        visibility: postData.visibility || 'public',
+        is_published: true,
+      };
+
+      if (!hasUrls) {
+        insertPayload.media_urls = null;
+        insertPayload.media_types = null;
+      } else if (hasUrls && !mediaLengthsMatch) {
+        insertPayload.media_types = null;
+      }
+
       const { data, error } = await this.supabase
         .from('posts')
-        .insert([{
-          ...postData,
-          post_type: postData.post_type || 'general',
-          visibility: postData.visibility || 'public',
-          is_published: true
-        }])
+        .insert([insertPayload])
         .select()
         .single();
 

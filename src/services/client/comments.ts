@@ -58,10 +58,19 @@ export class CommentsService {
     parentCommentId?: string
   ): Promise<PostComment | null> {
     try {
+      // Require authentication and set user_id for RLS
+      const { data: authData, error: authError } = await this.supabase.auth.getUser();
+      if (authError || !authData?.user) {
+        throw new Error('You must be signed in to comment');
+      }
+
+      const authenticatedUserId = authData.user.id;
+
       const { data, error } = await this.supabase
         .from('post_comments')
         .insert([{
           post_id: postId,
+          user_id: authenticatedUserId,
           content: content.trim(),
           parent_comment_id: parentCommentId || null
         }])

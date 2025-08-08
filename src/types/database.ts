@@ -710,6 +710,7 @@ export type FeedPost = {
   media_urls?: string[];
   media_types?: string[];
   tags?: string[];
+  location?: string | null;
 };
 
 export type GigSearchResult = Gig & {

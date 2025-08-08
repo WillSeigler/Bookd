@@ -22,6 +22,18 @@ export function FeedFallback({ currentUserId }: FeedFallbackProps) {
     loadCurrentUser();
   }, [currentUserId]);
 
+  // Listen for create post events from Quick Actions
+  useEffect(() => {
+    const handleOpenCreatePost = () => {
+      if (currentUser) {
+        setShowCreatePost(true);
+      }
+    };
+
+    window.addEventListener('openCreatePost', handleOpenCreatePost);
+    return () => window.removeEventListener('openCreatePost', handleOpenCreatePost);
+  }, [currentUser]);
+
   const loadCurrentUser = async () => {
     if (!currentUserId) return;
     
@@ -48,53 +60,7 @@ export function FeedFallback({ currentUserId }: FeedFallbackProps) {
     try {
       const supabase = createClient();
       
-      // First, try the database function
-      try {
-        const { data: feedData, error: feedError } = await supabase.rpc('get_user_feed', {
-          p_user_id: currentUserId || null,
-          p_limit: 20,
-          p_offset: 0
-        });
-
-        if (!feedError && feedData) {
-          // Enrich with author data
-          const enrichedPosts = await Promise.all(
-            feedData.map(async (post: any) => {
-              let author = null;
-              
-              if (post.user_id) {
-                const { data: userData } = await supabase
-                  .from('users')
-                  .select('id, full_name, avatar_url')
-                  .eq('id', post.user_id)
-                  .single();
-                
-                if (userData) author = userData;
-              }
-              
-              if (post.organization_id) {
-                const { data: orgData } = await supabase
-                  .from('organization_profiles')
-                  .select('id, name, logo_url')
-                  .eq('id', post.organization_id)
-                  .single();
-                
-                if (orgData) author = orgData;
-              }
-
-              return { ...post, author } as FeedPost;
-            })
-          );
-
-          setPosts(enrichedPosts);
-          setLoading(false);
-          return;
-        }
-      } catch (functionError) {
-        console.log('Database function not available, using fallback query');
-      }
-
-      // Fallback: Simple posts query if function doesn't exist
+      // Query posts directly to ensure media fields are returned
       const { data: postsData, error: postsError } = await supabase
         .from('posts')
         .select(`
@@ -109,6 +75,7 @@ export function FeedFallback({ currentUserId }: FeedFallbackProps) {
           comments_count,
           created_at,
           media_urls,
+          media_types,
           tags
         `)
         .eq('is_published', true)
